@@ -23,6 +23,45 @@ export function createApp() {
 		return c.json({ data: null, error: "Internal server error" }, 500);
 	});
 
+	app.get("/api/auth/mobile/google", async (c) => {
+		const baseUrl = process.env.BETTER_AUTH_URL || "http://localhost:3001";
+		const callbackURL = `${baseUrl}/api/auth/mobile-callback`;
+		const url = new URL(`${baseUrl}/api/auth/sign-in/social`);
+		const request = new Request(url.toString(), {
+			method: "POST",
+			headers: new Headers({
+				"Content-Type": "application/json",
+				"cookie": c.req.header("cookie") || "",
+				"origin": baseUrl,
+			}),
+			body: JSON.stringify({ provider: "google", callbackURL }),
+		});
+		const response = await auth.handler(request);
+
+		// Better Auth returns JSON with { url, redirect } — extract and do the redirect
+		// Forward Set-Cookie headers so the state cookie reaches the browser
+		const body = await response.json() as { url?: string; redirect?: boolean };
+		if (body.url) {
+			const redirectResponse = c.redirect(body.url);
+			const setCookie = response.headers.getSetCookie?.() ?? [];
+			for (const cookie of setCookie) {
+				redirectResponse.headers.append("Set-Cookie", cookie);
+			}
+			return redirectResponse;
+		}
+		return c.redirect("iosbetterauthintegration://auth-callback?error=no_redirect");
+	});
+
+	app.get("/api/auth/mobile-callback", (c) => {
+		const cookie = c.req.header("cookie") || "";
+		const match = cookie.match(/better-auth\.session_token=([^;]+)/);
+		if (match) {
+			const token = match[1];
+			return c.redirect(`iosbetterauthintegration://auth-callback?token=${encodeURIComponent(token!)}`);
+		}
+		return c.redirect("iosbetterauthintegration://auth-callback?error=no_session");
+	});
+
 	app.on(["POST", "GET"], "/api/auth/*", (c) => {
 		return auth.handler(c.req.raw);
 	});
