@@ -1,18 +1,32 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
-import { authClient, getLocalSession, clearSession } from "@/lib/auth-client";
+import { authClient, getLocalSession, saveSession, clearSession, type LocalSession } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { LogOut } from "lucide-react";
 
 export default function HomePage() {
 	const navigate = useNavigate();
-	const session = getLocalSession();
+	const [session, setSession] = useState<LocalSession | null>(getLocalSession);
+	const [loading, setLoading] = useState(!session);
 
 	useEffect(() => {
-		if (!session) {
-			navigate("/auth");
-		}
+		if (session) return;
+
+		// No local session — check server (handles OAuth callback redirect)
+		authClient.getSession().then(({ data }) => {
+			if (data?.user) {
+				saveSession({
+					id: data.user.id,
+					email: data.user.email,
+					name: data.user.name,
+				});
+				setSession(getLocalSession());
+			} else {
+				navigate("/auth");
+			}
+			setLoading(false);
+		});
 	}, [session, navigate]);
 
 	const handleSignOut = async () => {
@@ -20,6 +34,14 @@ export default function HomePage() {
 		clearSession();
 		navigate("/auth");
 	};
+
+	if (loading) {
+		return (
+			<div className="flex min-h-screen items-center justify-center">
+				<p className="text-muted-foreground">Loading...</p>
+			</div>
+		);
+	}
 
 	if (!session) {
 		return null;
