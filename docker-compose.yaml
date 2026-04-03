@@ -1,0 +1,14 @@
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: app_user
+      POSTGRES_PASSWORD: Qwerty123456
+      POSTGRES_DB: app_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - app_db_data:/var/lib/postgresql/data
+
+volumes:
+  app_db_data:
