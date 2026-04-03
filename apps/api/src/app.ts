@@ -8,7 +8,12 @@ import appRoutes from "./routes";
 export function createApp() {
 	const app = new Hono();
 	app.use(logger());
-	app.use("*", cors());
+	app.use("*", cors({
+		origin: ["http://localhost:3000"],
+		credentials: true,
+		allowHeaders: ["Content-Type", "Authorization"],
+		allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+	}));
 
 	app.onError((err, c) => {
 		if (err instanceof APIError) {
