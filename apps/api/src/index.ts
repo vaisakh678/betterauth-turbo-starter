@@ -3,7 +3,7 @@ import { createApp } from "./app";
 
 const app = createApp();
 
-const server = serve({ fetch: app.fetch, port: 3001 }, (info) => {
+const server = serve({ fetch: app.fetch, port: 3001, hostname: "0.0.0.0" }, (info) => {
 	console.log(`Server running at http://localhost:${info.port}`);
 });
 

@@ -23,9 +23,11 @@ export function createApp() {
 		return c.json({ data: null, error: "Internal server error" }, 500);
 	});
 
+	// Mobile Google OAuth — initiates the flow for iOS/Android
 	app.get("/api/auth/mobile/google", async (c) => {
 		const baseUrl = process.env.BETTER_AUTH_URL || "http://localhost:3001";
-		const callbackURL = `${baseUrl}/api/auth/mobile-callback`;
+		const platform = c.req.query("platform") || "ios";
+		const callbackURL = `${baseUrl}/api/auth/mobile-callback?platform=${platform}`;
 		const url = new URL(`${baseUrl}/api/auth/sign-in/social`);
 		const request = new Request(url.toString(), {
 			method: "POST",
@@ -38,8 +40,6 @@ export function createApp() {
 		});
 		const response = await auth.handler(request);
 
-		// Better Auth returns JSON with { url, redirect } — extract and do the redirect
-		// Forward Set-Cookie headers so the state cookie reaches the browser
 		const body = await response.json() as { url?: string; redirect?: boolean };
 		if (body.url) {
 			const redirectResponse = c.redirect(body.url);
@@ -49,17 +49,29 @@ export function createApp() {
 			}
 			return redirectResponse;
 		}
-		return c.redirect("iosbetterauthintegration://auth-callback?error=no_redirect");
+		const scheme = platform === "android" ? "androidbetterauthintegration" : "iosbetterauthintegration";
+		return c.redirect(`${scheme}://auth-callback?error=no_redirect`);
 	});
 
+	// Alias for Android
+	app.get("/api/auth/mobile/google-android", async (c) => {
+		const url = new URL(c.req.url);
+		url.pathname = "/api/auth/mobile/google";
+		url.searchParams.set("platform", "android");
+		return app.fetch(new Request(url.toString(), { headers: c.req.raw.headers }));
+	});
+
+	// Mobile OAuth callback — extracts session token and redirects to app
 	app.get("/api/auth/mobile-callback", (c) => {
+		const platform = c.req.query("platform") || "ios";
+		const scheme = platform === "android" ? "androidbetterauthintegration" : "iosbetterauthintegration";
 		const cookie = c.req.header("cookie") || "";
 		const match = cookie.match(/better-auth\.session_token=([^;]+)/);
 		if (match) {
 			const token = match[1];
-			return c.redirect(`iosbetterauthintegration://auth-callback?token=${encodeURIComponent(token!)}`);
+			return c.redirect(`${scheme}://auth-callback?token=${encodeURIComponent(token!)}`);
 		}
-		return c.redirect("iosbetterauthintegration://auth-callback?error=no_session");
+		return c.redirect(`${scheme}://auth-callback?error=no_session`);
 	});
 
 	app.on(["POST", "GET"], "/api/auth/*", (c) => {

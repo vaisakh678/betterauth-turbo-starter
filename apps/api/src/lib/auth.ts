@@ -14,7 +14,7 @@ export const auth = betterAuth({
 			generateId: false,
 		}
 	},
-	trustedOrigins: ["http://localhost:5173", "http://localhost:3001", "iosbetterauthintegration://"],
+	trustedOrigins: ["http://localhost:5173", "http://localhost:3001", "iosbetterauthintegration://", "androidbetterauthintegration://"],
 	socialProviders: {
 		google: {
 			clientId: process.env.GOOGLE_CLIENT_ID!,

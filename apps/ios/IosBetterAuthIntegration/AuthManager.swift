@@ -87,7 +87,7 @@ class AuthManager {
         isLoading = true
         error = nil
 
-        guard let signInURL = URL(string: "\(baseURL)/api/auth/mobile/google") else {
+        guard let signInURL = URL(string: "\(baseURL)/api/auth/mobile/google?platform=ios") else {
             error = "Invalid sign-in URL"
             isLoading = false
             return
