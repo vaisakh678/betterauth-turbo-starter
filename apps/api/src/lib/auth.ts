@@ -1,6 +1,6 @@
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
-import { emailOTP } from "better-auth/plugins";
+import { emailOTP, jwt } from "better-auth/plugins";
 import db from "@repo/db";
 
 export const auth = betterAuth({
@@ -32,5 +32,6 @@ export const auth = betterAuth({
 				console.log(`[OTP] ${type} → ${email}: ${otp}`);
 			},
 		}),
+		jwt(),
 	],
 });
