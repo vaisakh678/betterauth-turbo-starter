@@ -107,7 +107,7 @@ class AuthManager {
                         continuation.resume(throwing: URLError(.badServerResponse))
                     }
                 }
-                session.prefersEphemeralWebBrowserSession = true
+                session.prefersEphemeralWebBrowserSession = false
                 session.presentationContextProvider = webAuthContextProvider
                 self.webAuthSession = session
                 session.start()
