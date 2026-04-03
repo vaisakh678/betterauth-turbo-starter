@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router";
-import { authClient } from "@/lib/auth-client";
+import { authClient, saveSession } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
@@ -37,7 +37,7 @@ export default function AuthPage() {
 		setLoading(true);
 		setError("");
 
-		const { error } = await authClient.signIn.emailOtp({
+		const { data, error } = await authClient.signIn.emailOtp({
 			email,
 			otp,
 		});
@@ -45,7 +45,12 @@ export default function AuthPage() {
 		setLoading(false);
 		if (error) {
 			setError(error.message ?? "Invalid OTP");
-		} else {
+		} else if (data) {
+			saveSession({
+				id: data.user.id,
+				email: data.user.email,
+				name: data.user.name,
+			});
 			navigate("/");
 		}
 	};

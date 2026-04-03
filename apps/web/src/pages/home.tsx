@@ -1,28 +1,27 @@
+import { useEffect } from "react";
 import { useNavigate } from "react-router";
-import { authClient } from "@/lib/auth-client";
+import { authClient, getLocalSession, clearSession } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { LogOut } from "lucide-react";
 
 export default function HomePage() {
 	const navigate = useNavigate();
-	const { data: session, isPending } = authClient.useSession();
+	const session = getLocalSession();
+
+	useEffect(() => {
+		if (!session) {
+			navigate("/auth");
+		}
+	}, [session, navigate]);
 
 	const handleSignOut = async () => {
 		await authClient.signOut();
+		clearSession();
 		navigate("/auth");
 	};
 
-	if (isPending) {
-		return (
-			<div className="flex min-h-screen items-center justify-center">
-				<p className="text-muted-foreground">Loading...</p>
-			</div>
-		);
-	}
-
 	if (!session) {
-		navigate("/auth");
 		return null;
 	}
 
