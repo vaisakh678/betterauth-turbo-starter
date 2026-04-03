@@ -1,159 +1,214 @@
-# Turborepo starter
+# betterauth-turbo-starter
 
-This Turborepo starter is maintained by the Turborepo core team.
+A fullstack monorepo reference implementation for integrating [Better Auth](https://better-auth.com) with iOS, Android (TODO), and Web clients. Built with Turborepo, Hono, Drizzle ORM, and PostgreSQL.
 
-## Using this example
+Use this as a reference when setting up Better Auth in new projects.
 
-Run the following command:
+## Architecture
 
-```sh
-npx create-turbo@latest
+```
+betterauth-turbo-starter/
+├── apps/
+│   ├── api/          # Hono API server (port 3001)
+│   ├── web/          # Vite + React + Tailwind (port 3000)
+│   └── ios/          # SwiftUI iOS app
+├── packages/
+│   ├── db/           # Drizzle ORM + PostgreSQL + Better Auth schema
+│   ├── ui/           # Shared React component library
+│   ├── eslint-config/
+│   └── typescript-config/
+├── docker-compose.yaml
+└── turbo.json
 ```
 
-## What's inside?
+## Tech Stack
 
-This Turborepo includes the following packages/apps:
+| Layer | Tech |
+|-------|------|
+| Monorepo | Turborepo + pnpm workspaces |
+| API | Hono + @hono/node-server |
+| Auth | Better Auth (email OTP + JWT + Google + Apple OAuth) |
+| Database | PostgreSQL 17 + Drizzle ORM |
+| Web | Vite + React 19 + Tailwind v4 + shadcn/ui + React Router |
+| iOS | SwiftUI + @Observable (Swift 6 / Xcode 26) |
 
-### Apps and Packages
+## Auth Strategy
 
-- `docs`: a [Next.js](https://nextjs.org/) app
-- `web`: another [Next.js](https://nextjs.org/) app
-- `@repo/ui`: a stub React component library shared by both `web` and `docs` applications
-- `@repo/eslint-config`: `eslint` configurations (includes `eslint-config-next` and `eslint-config-prettier`)
-- `@repo/typescript-config`: `tsconfig.json`s used throughout the monorepo
+- **JWT-based** authentication via Better Auth's `jwt()` plugin
+- **Email OTP** login (no passwords) via `emailOTP()` plugin
+- **Google & Apple OAuth** configured (provide your own credentials)
+- **UUID primary keys** on all auth tables (using `gen_random_uuid()`)
+- Server sets JWT in cookies; web stores session in `localStorage` for offline access
+- iOS stores token in `UserDefaults` for offline access
 
-Each package/app is 100% [TypeScript](https://www.typescriptlang.org/).
+## Quick Start
 
-### Utilities
+### Prerequisites
 
-This Turborepo has some additional tools already setup for you:
+- Node.js >= 18
+- pnpm 9
+- Docker (for PostgreSQL)
+- Xcode 16+ (for iOS)
 
-- [TypeScript](https://www.typescriptlang.org/) for static type checking
-- [ESLint](https://eslint.org/) for code linting
-- [Prettier](https://prettier.io) for code formatting
+### 1. Install dependencies
 
-### Build
-
-To build all apps and packages, run the following command:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended):
-
-```sh
-cd my-turborepo
-turbo build
+```bash
+pnpm install
 ```
 
-Without global `turbo`, use your package manager:
+### 2. Start the database
 
-```sh
-cd my-turborepo
-npx turbo build
-yarn dlx turbo build
-pnpm exec turbo build
+```bash
+docker compose up -d
 ```
 
-You can build a specific package by using a [filter](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters):
+This starts PostgreSQL 17 with:
+- User: `app_user`
+- Password: `Qwerty123456`
+- Database: `app_db`
+- Port: `5432`
 
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed:
+### 3. Run migrations
 
-```sh
-turbo build --filter=docs
+```bash
+pnpm --filter @repo/db db:generate
+pnpm --filter @repo/db db:migrate
 ```
 
-Without global `turbo`:
+### 4. Configure environment
 
-```sh
-npx turbo build --filter=docs
-yarn exec turbo build --filter=docs
-pnpm exec turbo build --filter=docs
+The `.env` files are already set up for local development. For OAuth, fill in your credentials in `apps/api/.env`:
+
+```env
+DATABASE_URL=postgres://app_user:Qwerty123456@localhost:5432/app_db?sslmode=disable
+BETTER_AUTH_SECRET=supersecretkey-change-me-in-production
+BETTER_AUTH_URL=http://localhost:3001
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+APPLE_CLIENT_ID=
+APPLE_CLIENT_SECRET=
 ```
 
-### Develop
+### 5. Start development
 
-To develop all apps and packages, run the following command:
+```bash
+# Start API + Web together
+pnpm dev
 
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended):
-
-```sh
-cd my-turborepo
-turbo dev
+# Or individually
+pnpm --filter api dev     # API on :3001
+pnpm --filter web dev     # Web on :3000
 ```
 
-Without global `turbo`, use your package manager:
+### 6. iOS
 
-```sh
-cd my-turborepo
-npx turbo dev
-yarn exec turbo dev
-pnpm exec turbo dev
+Open `apps/ios/IosBetterAuthIntegration.xcodeproj` in Xcode and run on a simulator. The API server must be running on `localhost:3001`.
+
+## How It Works
+
+### API Server (`apps/api`)
+
+Better Auth is mounted at `/api/auth/*` in `src/app.ts`:
+
+```typescript
+app.on(["POST", "GET"], "/api/auth/*", (c) => {
+    return auth.handler(c.req.raw);
+});
 ```
 
-You can develop a specific package by using a [filter](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters):
+Auth configuration in `src/lib/auth.ts`:
 
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed:
-
-```sh
-turbo dev --filter=web
+```typescript
+export const auth = betterAuth({
+    database: drizzleAdapter(db, { provider: "pg" }),
+    advanced: { database: { generateId: false } },  // DB generates UUIDs
+    plugins: [
+        emailOTP({
+            async sendVerificationOTP({ email, otp, type }) {
+                console.log(`[OTP] ${type} -> ${email}: ${otp}`);
+            },
+        }),
+        jwt(),
+    ],
+    socialProviders: { google: { ... }, apple: { ... } },
+});
 ```
 
-Without global `turbo`:
+CORS is configured to allow `http://localhost:3000` with credentials.
 
-```sh
-npx turbo dev --filter=web
-yarn exec turbo dev --filter=web
-pnpm exec turbo dev --filter=web
+### Database Schema (`packages/db`)
+
+Generated via `npx @better-auth/cli generate` then modified to use UUID PKs.
+
+**Tables:** `user`, `session`, `account`, `verification`, `jwks`
+
+To regenerate after adding new Better Auth plugins:
+
+```bash
+cd apps/api
+npx @better-auth/cli generate --config ./src/lib/auth.ts --output ../../packages/db/src/schema/auth.ts --yes
 ```
 
-### Remote Caching
+Then re-apply UUID changes and run `db:generate` + `db:migrate`.
 
-> [!TIP]
-> Vercel Remote Cache is free for all plans. Get started today at [vercel.com](https://vercel.com/signup?utm_source=remote-cache-sdk&utm_campaign=free_remote_cache).
+### Web Client (`apps/web`)
 
-Turborepo can use a technique known as [Remote Caching](https://turborepo.dev/docs/core-concepts/remote-caching) to share cache artifacts across machines, enabling you to share build caches with your team and CI/CD pipelines.
+Uses Better Auth's React client with JWT:
 
-By default, Turborepo will cache locally. To enable Remote Caching you will need an account with Vercel. If you don't have an account you can [create one](https://vercel.com/signup?utm_source=turborepo-examples), then enter the following commands:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended):
-
-```sh
-cd my-turborepo
-turbo login
+```typescript
+export const authClient = createAuthClient({
+    baseURL: "http://localhost:3001",
+    plugins: [emailOTPClient(), jwtClient()],
+});
 ```
 
-Without global `turbo`, use your package manager:
+Session is stored in `localStorage` after sign-in for offline access. Two pages:
+- `/auth` — Email OTP sign-in (email input -> OTP verification)
+- `/` — Home page (shows user email, sign out button)
 
-```sh
-cd my-turborepo
-npx turbo login
-yarn exec turbo login
-pnpm exec turbo login
+### iOS Client (`apps/ios`)
+
+Native SwiftUI app using `@Observable` (Swift 6). Calls the API directly via `URLSession`:
+
+- `POST /api/auth/email-otp/send-verification-otp` — Send OTP
+- `POST /api/auth/sign-in/email-otp` — Verify OTP and sign in
+
+Token stored in `UserDefaults` for offline persistence.
+
+## Auth API Endpoints
+
+Better Auth exposes these endpoints automatically:
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/auth/email-otp/send-verification-otp` | Send OTP to email |
+| POST | `/api/auth/sign-in/email-otp` | Sign in with email + OTP |
+| GET | `/api/auth/get-session` | Get current session |
+| POST | `/api/auth/sign-out` | Sign out |
+| POST | `/api/auth/sign-in/social` | OAuth sign in (Google/Apple) |
+
+## Key Decisions & Gotchas
+
+1. **UUID PKs instead of text IDs** — Better Auth CLI generates `text("id")` by default. We changed all PKs to `uuid("id").defaultRandom()` and set `generateId: false` so Postgres generates IDs.
+
+2. **JWT plugin requires `jwks` table** — Adding the `jwt()` plugin means you must regenerate the schema to include the `jwks` table, then migrate.
+
+3. **CORS with credentials** — `cors()` with no options sets `Access-Control-Allow-Origin: *` which browsers reject when cookies/credentials are involved. Must specify exact origins with `credentials: true`.
+
+4. **Schema regeneration overwrites UUID changes** — Running the Better Auth CLI again resets PKs to `text`. Re-apply UUID changes after each regeneration.
+
+5. **Web session uses localStorage, not JWT decode** — The JWT cookie may be HttpOnly. We store user info in localStorage after sign-in for reliable client-side access and offline support.
+
+6. **iOS simulator + localhost** — Works fine on simulator. For real devices, replace `localhost` with your machine's local IP.
+
+## Scripts
+
+```bash
+pnpm dev                              # Start all apps
+pnpm build                            # Build all apps
+pnpm --filter @repo/db db:generate    # Generate Drizzle migration
+pnpm --filter @repo/db db:migrate     # Apply migrations
+pnpm --filter @repo/db db:studio      # Open Drizzle Studio
+pnpm --filter api dev                 # Start API only
+pnpm --filter web dev                 # Start web only
 ```
-
-This will authenticate the Turborepo CLI with your [Vercel account](https://vercel.com/docs/concepts/personal-accounts/overview).
-
-Next, you can link your Turborepo to your Remote Cache by running the following command from the root of your Turborepo:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed:
-
-```sh
-turbo link
-```
-
-Without global `turbo`:
-
-```sh
-npx turbo link
-yarn exec turbo link
-pnpm exec turbo link
-```
-
-## Useful Links
-
-Learn more about the power of Turborepo:
-
-- [Tasks](https://turborepo.dev/docs/crafting-your-repository/running-tasks)
-- [Caching](https://turborepo.dev/docs/crafting-your-repository/caching)
-- [Remote Caching](https://turborepo.dev/docs/core-concepts/remote-caching)
-- [Filtering](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters)
-- [Configuration Options](https://turborepo.dev/docs/reference/configuration)
-- [CLI Usage](https://turborepo.dev/docs/reference/command-line-reference)
